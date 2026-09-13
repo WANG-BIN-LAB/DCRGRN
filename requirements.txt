@@ -1,0 +1,8 @@
+numpy==2.0.1
+pandas==2.2.3
+scipy==1.15.2
+scikit-learn==1.6.1
+networkx==3.4.2
+tqdm==4.67.3
+torch==2.5.0
+torch-geometric==2.6.1
