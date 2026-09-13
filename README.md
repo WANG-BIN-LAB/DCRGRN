@@ -29,8 +29,6 @@ DCRGRN/
 │   ├── models/
 │   └── utils/
 ├── .gitignore
-├── CITATION.cff
-├── DATA_NOTICE.md
 ├── LICENSE
 └── requirements.txt
 ```
@@ -108,19 +106,6 @@ links to the original experiment directory.
 
 The default evaluation protocol uses five fixed seeds (2022–2026), validation
 AUROC for early stopping, and reports AUROC and AUPRC on the held-out test set.
-
-## Data provenance
-
-The experimental datasets are derived from the BEELINE benchmark. See
-[`DATA_NOTICE.md`](DATA_NOTICE.md) for the upstream source, required citation,
-and third-party data terms. The MIT license in this repository applies to the
-DCR-GRN software and does not supersede upstream dataset licenses.
-
-## Citation
-
-Citation metadata is provided in [`CITATION.cff`](CITATION.cff). Please replace
-the software-team author entry with the final paper author list and add the
-paper DOI after publication.
 
 ## License
 
