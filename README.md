@@ -106,8 +106,3 @@ links to the original experiment directory.
 
 The default evaluation protocol uses five fixed seeds (2022–2026), validation
 AUROC for early stopping, and reports AUROC and AUPRC on the held-out test set.
-
-## License
-
-The DCR-GRN source code is released under the MIT License. See
-[`LICENSE`](LICENSE).
