@@ -1,163 +1,127 @@
-import csv
+"""Dataset loading and enclosing-subgraph preprocessing."""
+
+from itertools import chain
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
 import torch
 import torch.nn.functional as F
 from sklearn.preprocessing import StandardScaler
 from torch_geometric.data import Data, InMemoryDataset
-from torch_geometric.datasets import Planetoid, CitationFull, Flickr, Twitch, Coauthor
-from torch_geometric.utils import from_networkx, train_test_split_edges, add_self_loops, negative_sampling, k_hop_subgraph
-from torch_geometric.transforms import RandomLinkSplit
-import os
-import pickle
-import numpy as np
-import pandas as pd
-import scipy.sparse as sp
-import os.path as osp
-from itertools import chain
 
-from .func_utils import extract_enclosing_subgraphs, drnl_node_labeling
+from .func_utils import extract_enclosing_subgraphs
 
 
+class GeneExpressionDataset(InMemoryDataset):
+    """Load a gene-by-cell expression matrix as a PyG node-feature dataset."""
 
-class Gene(InMemoryDataset):
-    """
-     Dataset class for loading and preprocessing raw gene expression data.
-     """
-    def __init__(self, root, data_name,transform=None, pre_transform=None):
-        self.data_name = data_name
+    def __init__(self, root, expression_file, transform=None, pre_transform=None):
+        self.expression_file = str(expression_file)
         super().__init__(root, transform, pre_transform)
-
-        # Load previously processed data if available
-        self.data = torch.load(self.processed_paths[0],weights_only=False)
-
+        self.data = torch.load(self.processed_paths[0], weights_only=False)
 
     @property
     def processed_file_names(self):
-        return ['gene.pt']
+        return ["gene_expression.pt"]
 
     def process(self):
-        """
-        Reads raw expression data, performs standardization, and saves as a PyG Data object.
-        """
-        # data_dir = '../data/hESC 500'
-        expression_data_path = self.data_name
-        # edges = pd.read_csv(data_dir + '/Label.csv', index_col=0, header=0)
-        expression_data = np.array(pd.read_csv(expression_data_path, index_col=0, header=0))
-
-        # Data Preprocessing: Apply Z-score normalization (StandardScaler)
-        standard = StandardScaler()
-        scaled_df = standard.fit_transform(expression_data.T)
-        expression_data = scaled_df.T
-
-        # Create PyG Data object containing node features (x)
-        dataset = Data(
-            x=torch.tensor(expression_data, dtype=torch.float),
-
+        expression = np.asarray(
+            pd.read_csv(self.expression_file, index_col=0, header=0)
         )
-        torch.save(dataset, self.processed_paths[0])
-def load_data(data_name,save_path):
-    """Wrapper to initialize and load the Gene dataset."""
-    dataset = Gene(root=save_path, data_name=data_name)
-
-    return dataset
+        expression = StandardScaler().fit_transform(expression.T).T
+        data = Data(x=torch.tensor(expression, dtype=torch.float))
+        torch.save(data, self.processed_paths[0])
 
 
-def sample_dataset(edge_index, ratio):
-    if ratio != 1.0:
-        num_edges = edge_index.size(1)
-        edge_index = edge_index[:, np.random.permutation(num_edges)[: int(ratio * num_edges)]]
-    return edge_index
+def load_expression_data(expression_file, cache_dir):
+    """Create or load the standardized gene-expression dataset."""
+
+    return GeneExpressionDataset(
+        root=str(cache_dir),
+        expression_file=str(expression_file),
+    )
 
 
-class ATFGRN_Dataset(InMemoryDataset):
-    """
-    Main dataset class for the ATFGRN model.
-    Handles subgraph extraction and structural node labeling for link prediction.
-    """
-    def __init__(self, dataset, args, num_hops=1, split='train'):
-        self.dataset = dataset
-        self.data_name = str(dataset)[:-2]
-        self.data = dataset[0]
-        self.args = args
-        self.num_hops = num_hops
-        super(ATFGRN_Dataset, self).__init__(dataset.root)
+class DCRGRNDataset(InMemoryDataset):
+    """Create fixed-split DRNL enclosing subgraphs for link prediction."""
 
-        # Load the specific split (train/val/test)
-        index = ['train', 'val', 'test'].index(split)
-        self.data, self.slices = torch.load(self.processed_paths[index],weights_only=False)
+    SPLITS = ("train", "validation", "test")
+
+    def __init__(
+        self,
+        expression_dataset,
+        split_dir,
+        dataset_tag,
+        num_hops=2,
+        split="train",
+    ):
+        normalized_split = str(split).lower()
+        if normalized_split == "val":
+            normalized_split = "validation"
+        if normalized_split not in self.SPLITS:
+            raise ValueError(f"Unsupported split: {split}")
+
+        self.expression_dataset = expression_dataset
+        self.base_data = expression_dataset[0]
+        self.split_dir = Path(split_dir)
+        self.dataset_tag = str(dataset_tag).replace(" ", "_")
+        self.num_hops = int(num_hops)
+        super().__init__(expression_dataset.root)
+
+        index = self.SPLITS.index(normalized_split)
+        self.data, self.slices = torch.load(
+            self.processed_paths[index], weights_only=False
+        )
+
     @property
     def processed_file_names(self):
-        return ['{}_train_data.pt'.format(self.data_name),
-                '{}_val_data.pt'.format(self.data_name),
-                '{}_test_data.pt'.format(self.data_name)]
+        return [
+            f"{self.dataset_tag}_{split}_subgraphs.pt" for split in self.SPLITS
+        ]
 
-
-    def load_csv_data(self, file_path):
-        """
-        Parses CSV files to extract Positive (Label=1) and Negative (Label=0) edge indices.
-        """
-        df = pd.read_csv(file_path, index_col=0, header=0)
-        pos_edges = df[df["Label"] == 1][["TF", "Target"]].values.tolist()
-        neg_edges = df[df["Label"] == 0][["TF", "Target"]].values.tolist()
-
-        pos_edge_index = torch.tensor(pos_edges, dtype=torch.long).t().contiguous()
-        neg_edge_index = torch.tensor(neg_edges, dtype=torch.long).t().contiguous()
-        return pos_edge_index, neg_edge_index
+    @staticmethod
+    def _load_edges(file_path):
+        frame = pd.read_csv(file_path, index_col=0, header=0)
+        positive = frame.loc[frame["Label"] == 1, ["TF", "Target"]].to_numpy()
+        negative = frame.loc[frame["Label"] == 0, ["TF", "Target"]].to_numpy()
+        positive = torch.as_tensor(positive, dtype=torch.long).t().contiguous()
+        negative = torch.as_tensor(negative, dtype=torch.long).t().contiguous()
+        return positive, negative
 
     def process(self):
-        """
-        Main processing pipeline:
-        1. Loads edge splits.
-        2. Extracts enclosing subgraphs for each link.
-        3. Applies DRNL labeling and generates one-hot features.
-        """
-        data_dir = '../data/' + self.args.netType + '/' + self.args.dataset + ' ' + self.args.num
-        train_file = data_dir + '/Train_set.csv'
-        val_file = data_dir + '/Validation_set.csv'
-        test_file = data_dir + '/Test_set.csv'
+        files = {
+            "train": self.split_dir / "Train_set.csv",
+            "validation": self.split_dir / "Validation_set.csv",
+            "test": self.split_dir / "Test_set.csv",
+        }
+        edges = {name: self._load_edges(path) for name, path in files.items()}
+        training_graph = edges["train"][0]
 
-        #Load Edge Indices for Train/Val/Test
-        train_pos_edge_index, train_neg_edge_index = self.load_csv_data(train_file)
-        val_pos_edge_index, val_neg_edge_index = self.load_csv_data(val_file)
-        test_pos_edge_index, test_neg_edge_index = self.load_csv_data(test_file)
+        subgraphs = {}
+        for split_name in self.SPLITS:
+            positive, negative = edges[split_name]
+            positive_subgraphs = extract_enclosing_subgraphs(
+                self.base_data,
+                self.num_hops,
+                positive,
+                training_graph,
+                1,
+            )
+            negative_subgraphs = extract_enclosing_subgraphs(
+                self.base_data,
+                self.num_hops,
+                negative,
+                training_graph,
+                0,
+            )
+            subgraphs[split_name] = positive_subgraphs + negative_subgraphs
 
-        data = self.data
+        all_subgraphs = chain.from_iterable(subgraphs.values())
+        max_label = max(int(graph.z.max()) for graph in all_subgraphs)
+        for graph in chain.from_iterable(subgraphs.values()):
+            graph.x = F.one_hot(graph.z, max_label + 1).to(torch.float)
+            graph.z = None
 
-        # Store edge indices in the data object
-        data.train_pos_edge_index = train_pos_edge_index
-        data.train_neg_edge_index = train_neg_edge_index
-        data.val_pos_edge_index = val_pos_edge_index
-        data.val_neg_edge_index = val_neg_edge_index
-        data.test_pos_edge_index = test_pos_edge_index
-        data.test_neg_edge_index = test_neg_edge_index
-
-        edge_index = data.train_pos_edge_index
-        train_pos_edge_index = data.train_pos_edge_index
-        train_neg_edge_index = data.train_neg_edge_index
-        val_pos_edge_index = data.val_pos_edge_index
-        val_neg_edge_index = data.val_neg_edge_index
-        test_pos_edge_index = data.test_pos_edge_index
-        test_neg_edge_index = data.test_neg_edge_index
-
-        # Extracts k-hop neighborhoods around target links to capture local structural information.
-        # 'drnl': Double Radius Node Labeling (used for distance encoding).
-        train_pos_list = extract_enclosing_subgraphs(self.data, self.num_hops, train_pos_edge_index, edge_index, 1, node_label='drnl')
-        train_neg_list = extract_enclosing_subgraphs(self.data, self.num_hops, train_neg_edge_index, edge_index, 0, node_label='drnl')
-        val_pos_list = extract_enclosing_subgraphs(self.data, self.num_hops, val_pos_edge_index, edge_index, 1, node_label='drnl')
-        val_neg_list = extract_enclosing_subgraphs(self.data, self.num_hops, val_neg_edge_index, edge_index, 0, node_label='drnl')
-        test_pos_list = extract_enclosing_subgraphs(self.data, self.num_hops, test_pos_edge_index, edge_index, 1, node_label='drnl')
-        test_neg_list = extract_enclosing_subgraphs(self.data, self.num_hops, test_neg_edge_index, edge_index, 0, node_label='drnl')
-
-        #Generate One-Hot Features from Node Labels
-        max_z = 0
-        for data in chain(train_pos_list, train_neg_list, val_pos_list, val_neg_list, test_pos_list, test_neg_list):
-            max_z = max(int(data.z.max()), max_z)
-        for data in chain(train_pos_list, train_neg_list, val_pos_list, val_neg_list, test_pos_list, test_neg_list):
-            data.x = F.one_hot(data.z, max_z + 1).to(torch.float)
-            data.z = None
-
-        #Save processed datasets
-        torch.save(self.collate(train_pos_list + train_neg_list), self.processed_paths[0])
-        torch.save(self.collate(val_pos_list + val_neg_list), self.processed_paths[1])
-        torch.save(self.collate(test_pos_list + test_neg_list), self.processed_paths[2])
-
-
+        for index, split_name in enumerate(self.SPLITS):
+            torch.save(self.collate(subgraphs[split_name]), self.processed_paths[index])

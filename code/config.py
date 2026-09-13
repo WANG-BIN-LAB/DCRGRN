@@ -1,4 +1,4 @@
-"""Command-line configuration for the released DCR-GRN experiments."""
+"""Command-line configuration for DCR-GRN experiments."""
 
 import argparse
 import torch
@@ -19,8 +19,8 @@ def str_to_bool(value):
 parser = argparse.ArgumentParser(
     description=(
         "Train DCR-GRN for cell-type-specific gene regulatory network "
-        "inference. Use --variant backbone before --variant dcrgrn when no "
-        "retained backbone checkpoints are available."
+        "inference. Train the backbone before a DCR-GRN variant when matching "
+        "backbone checkpoints are not available."
     )
 )
 
@@ -33,8 +33,6 @@ parser.add_argument("--wd", type=float, default=5e-4, help="weight decay")
 parser.add_argument("--bs", type=int, default=32, help="batch size")
 parser.add_argument("--patience", type=int, default=10, help="early-stopping patience")
 parser.add_argument("--num_layers", type=int, default=2, help="number of GNN layers")
-parser.add_argument("--ratio", type=float, default=0.4, help="legacy compatibility option")
-parser.add_argument("--metric", type=str, default="auc_ap")
 parser.add_argument("--seed", type=int, default=2022, help="base random seed")
 parser.add_argument(
     "--seed_list",
@@ -50,20 +48,19 @@ parser.add_argument(
 )
 
 # Shared-private decomposition and conditional information bottleneck
-parser.add_argument("--spore_lambda_rec", type=float, default=0.05)
-parser.add_argument("--spore_lambda_orth", type=float, default=0.01)
-parser.add_argument("--spore_lambda_share", type=float, default=0.01)
-parser.add_argument("--spore_lambda_syn", type=float, default=0.02)
-parser.add_argument("--spore_lambda_degree", type=float, default=0.005)
-parser.add_argument("--spore_load_retained", type=str_to_bool, default=True)
-parser.add_argument("--spore_nf_anchor_weight", type=float, default=0.02)
-parser.add_argument("--spore_nf_anchor_delta", type=float, default=0.25)
+parser.add_argument("--lambda_reconstruction", type=float, default=0.05)
+parser.add_argument("--lambda_orthogonality", type=float, default=0.01)
+parser.add_argument("--lambda_shared", type=float, default=0.01)
+parser.add_argument("--lambda_contrastive", type=float, default=0.02)
+parser.add_argument("--lambda_routing", type=float, default=0.005)
+parser.add_argument("--load_backbone", type=str_to_bool, default=True)
+parser.add_argument("--anchor_weight", type=float, default=0.02)
+parser.add_argument("--anchor_confidence", type=float, default=0.25)
 parser.add_argument("--cib_lambda_kl", type=float, default=5e-4)
 parser.add_argument("--cib_lambda_gain", type=float, default=0.01)
 parser.add_argument("--cib_lambda_entropy", type=float, default=0.001)
 
 # Data
-parser.add_argument("--netType", type=str, default="Specific", choices=["Specific"])
 parser.add_argument("--num", type=str, default="500", choices=["500", "1000"])
 parser.add_argument(
     "--dataset",
@@ -71,13 +68,10 @@ parser.add_argument(
     default="hESC",
     choices=["hESC", "hHEP", "mDC", "mESC", "mHSC-E", "mHSC-GM", "mHSC-L"],
 )
-parser.add_argument("--train_percent", type=float, default=1.0)
-parser.add_argument("--val_percent", type=float, default=1.0)
-parser.add_argument("--test_percent", type=float, default=1.0)
 parser.add_argument(
     "--variant",
     type=str,
     default="dcrgrn",
-    choices=["dcrgrn", "backbone", "spore_cib", "directed_idpath_evidential_pcconv_lowdeg"],
-    help="public model name; internal names remain accepted for old checkpoints",
+    choices=["backbone", "dcrgrn"],
+    help="complete DCR-GRN or its retained first-stage backbone",
 )
