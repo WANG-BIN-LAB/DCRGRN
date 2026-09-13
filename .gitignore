@@ -1,0 +1,32 @@
+# Python bytecode and tool caches
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments and local environment files
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Editors and operating-system artifacts
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.lnk
+
+# Generated preprocessing artifacts and experiment outputs
+Data_process/
+results/
+
+# Logs and model checkpoints
+*.log
+*.pt
+*.pth
+*.ckpt
+

@@ -4,6 +4,7 @@ import random
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch_geometric.nn import Node2Vec
 from torch_geometric.transforms import KNNGraph
 
@@ -26,12 +27,14 @@ def construct_knn_graph(data, k=1, device=None):
         raise ValueError("Gene-expression features are required to build the KNN graph.")
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     graph = data.clone()
-    graph.pos = graph.x
+    # Euclidean KNN over unit-normalized vectors is equivalent to cosine KNN
+    # and is supported by torch-cluster on both CPU and CUDA.
+    graph.pos = F.normalize(graph.x, p=2, dim=-1)
     transform = KNNGraph(
         int(k),
         loop=False,
         force_undirected=True,
-        cosine=True,
+        cosine=False,
     )
     graph = transform(graph.to(device)).cpu()
     graph.pos = None

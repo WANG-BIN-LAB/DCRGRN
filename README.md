@@ -29,14 +29,14 @@ DCRGRN/
 │   ├── models/
 │   └── utils/
 ├── .gitignore
+├── CITATION.cff
+├── DATA_NOTICE.md
+├── LICENSE
 └── requirements.txt
 ```
 
 `Data_process/` and `results/` are generated automatically during training and
 are therefore not included in the release package.
-
-The layout intentionally follows ATFGRN so that its data conventions and
-experiment workflow remain familiar.
 
 ## Installation
 
@@ -47,9 +47,10 @@ Geometric 2.6.1. Install a PyTorch build matching your CUDA driver first, then:
 pip install -r requirements.txt
 ```
 
-PyTorch Geometric operations used by KNNGraph and Node2Vec require the
-appropriate compiled PyG backend (for the verified environment this was
-`pyg-lib`).
+PyTorch Geometric operations used by KNNGraph and Node2Vec require compatible
+`pyg-lib` and `torch-cluster` wheels. Install builds matching the selected
+PyTorch and CUDA versions by following the PyTorch Geometric installation
+instructions.
 
 ## Data
 
@@ -93,10 +94,6 @@ Repeat the same commands with `--num 1000` for the TFs+1000 setting. The
 default configuration runs five seeds (2022--2026), uses validation AUROC for
 early stopping, and writes checkpoints and logs under `results/`.
 
-The public names `backbone` and `dcrgrn` map internally to historical identifiers
-so that the formal experiment checkpoints remain compatible. Users should use
-only the public names shown above.
-
 ## Outputs
 
 - checkpoints: `results/checkpoints/`
@@ -112,9 +109,20 @@ links to the original experiment directory.
 The default evaluation protocol uses five fixed seeds (2022–2026), validation
 AUROC for early stopping, and reports AUROC and AUPRC on the held-out test set.
 
-## Citation and license
+## Data provenance
 
-Citation metadata and a software license should be added after the paper's
-author list and release policy are finalized. Dataset redistribution must also
-be checked against the terms of the original data sources before making the
-repository public.
+The experimental datasets are derived from the BEELINE benchmark. See
+[`DATA_NOTICE.md`](DATA_NOTICE.md) for the upstream source, required citation,
+and third-party data terms. The MIT license in this repository applies to the
+DCR-GRN software and does not supersede upstream dataset licenses.
+
+## Citation
+
+Citation metadata is provided in [`CITATION.cff`](CITATION.cff). Please replace
+the software-team author entry with the final paper author list and add the
+paper DOI after publication.
+
+## License
+
+The DCR-GRN source code is released under the MIT License. See
+[`LICENSE`](LICENSE).
