@@ -29,7 +29,6 @@ DCRGRN/
 │   ├── models/
 │   └── utils/
 ├── .gitignore
-├── LICENSE
 └── requirements.txt
 ```
 
